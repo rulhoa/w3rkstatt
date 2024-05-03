@@ -25,6 +25,7 @@ Change Log
 Date (YMD)    Name                  What
 --------      ------------------    ------------------------
 20210311      Volker Scheithauer    Tranfer Development from bmcs_core project
+20240503      Volker Scheithauer    Fix CTM Alert conversion to json
 
 """
 
@@ -1459,7 +1460,7 @@ def trasnformtCtmAlert(data):
                 host_ip_dns = w3rkstatt.getHostDomain(hostname=host_name)
                 alias = cdmclass + ":" + host_name + ":" + host_ip_dns
                 sDataCenterStatus = sTemp[4]
-                sAlertCat = "datacenter"
+                sAlertCat = "datacenter"             
             elif "Distributed Control-M/EM Configuration Agent" in value:
                 sTemp = value.split()
                 host_name = sTemp[2]
@@ -1555,6 +1556,14 @@ def trasnformtCtmAlert(data):
                     sSystemStatus = "Not responding"
                 else:
                     sSystemStatus = "TBD"
+
+        if key == "run_as":    
+            if value and "Gateway" in value:
+                sAlertCat = "server"
+                if "WAS DISCONNECTED" in value:
+                    jCtmAlert['system_status'] = "Was Disconnected"
+                else:
+                    jCtmAlert['system_status'] = "TBD"                            
 
     if not ctmOrderId == "00000" and ctmOrderId is not None:
         ctmDataCenter = w3rkstatt.getJsonValue(path="$.data_center",
