@@ -26,6 +26,7 @@ Date (YMD)    Name                  What
 --------      ------------------    ------------------------
 20210527      Volker Scheithauer    Tranfer Development from other projects
 20220715      Volker Scheithauer    BMC Helix Operation Management Integration
+20240503      Volker Scheithauer    Fix CTM Alert conversion to json
 
 """
 
@@ -81,6 +82,7 @@ ctm_job_detail_level = w3rkstatt.getJsonValue(path="$.CTM.jobs.detail_level",
 
 ctmCoreData = None
 ctmJobData = None
+ctmAlertFileName = ""
 
 # Assign module defaults
 _localDebug = jCfgData["DEFAULT"]["debug"]["api"]
@@ -105,7 +107,6 @@ hostName = w3rkstatt.getHostName()
 hostIP = w3rkstatt.getHostIP(hostName)
 hostFqdn = w3rkstatt.getHostFqdn(hostName)
 domain = w3rkstatt.getHostDomain(hostFqdn)
-epoch = time.time()
 parser = argparse.ArgumentParser(prefix_chars=':')
 sUuid = w3rkstatt.sUuid
 
@@ -558,6 +559,7 @@ def analyzeAlert4Infra(raw, data):
 
 def writeAlertFile(data, alert, type="job"):
     fileStatus = False
+    fileName = None
     ctmJobData = data
     if _ctmActiveApi:
         fileType = "ctm-enriched-" + type + "-"
@@ -578,7 +580,7 @@ def writeAlertFile(data, alert, type="job"):
             logger.info('Function = "%s" ', "writeAlertFile")
             logger.info('CTM QA Alert File: "%s" ', filePath)
 
-    return fileStatus
+    return fileStatus, fileName
 
 
 if __name__ == "__main__":
@@ -634,6 +636,30 @@ if __name__ == "__main__":
                 "closed_from_em": None,
                 "ticket_number": None,
                 "run_counter": "00014",
+                "notes": None
+            }
+
+            jCtmAlert = {
+                "call_type": "I",
+                "alert_id": "1981",
+                "data_center": "ctm-srv.shytwr.net",
+                "memname": None,
+                "order_id": None,
+                "severity": "V",
+                "status": "Not_Noticed",
+                "send_time": "20240412112921",
+                "last_user": None,
+                "last_time": None,
+                "message": "SERVER ctm-srv.shytwr.net WAS DISCONNECTED",
+                "run_as": "Gateway",
+                "sub_application": None,
+                "application": None,
+                "job_name": None,
+                "host_id": None,
+                "alert_type": "R",
+                "closed_from_em": None,
+                "ticket_number": None,
+                "run_counter": None,
                 "notes": None
             }
 
@@ -694,12 +720,15 @@ if __name__ == "__main__":
             logger.info('CTM Extract Run Counter: %s', ctmRunCounter)
             logger.info('CTM Extract Alert Call: "%s"', ctmAlertCallType)
 
+            
 
         # Process only 'new' alerts
         if "New" in ctmAlertCallType:
             logger.info('')
             logger.info('CMT New Alert Processing: %s', jCtmAlertRaw)
-            logger.info('')
+            logger.info('CMT New Alert Category: "%s"', ctmAlertCat)
+
+
             if ctmAlertCat == "infrastructure":
                 pass
             else:
@@ -732,15 +761,13 @@ if __name__ == "__main__":
 
                 logger.info('')
                 jCtmAlertRawTemp = jCtmAlertRaw.replace('null', 'None')
-                logger.info('CMT QA Alert JSON Format 03: %s',
-                            jCtmAlertRawTemp)
+                logger.info('CMT QA Alert JSON Format 03: %s', jCtmAlertRawTemp)
                 logger.info('')
 
             # xAlert ID
             if not ctmAlertId:
                 ctmAlertId = str(
-                    w3rkstatt.getJsonValue(path="$.Serial",
-                                           data=jCtmAlert)).strip()
+                    w3rkstatt.getJsonValue(path="$.Serial", data=jCtmAlert)).strip()
 
             # CTM Login
             try:
@@ -755,67 +782,93 @@ if __name__ == "__main__":
             # Analyze alert
             ctmAlertDataFinal = {}
             if ctmAlertCat == "infrastructure":
-                ctmAlertDataFinal = analyzeAlert4Infra(raw=jCtmAlertRaw,
-                                                       data=jCtmAlert)
-                fileStatus = writeAlertFile(data=ctmAlertDataFinal,
-                                            alert=ctmAlertId,
-                                            type="infra")
+                ctmAlertDataFinal = analyzeAlert4Infra(raw=jCtmAlertRaw, data=jCtmAlert)
+                fileStatus, ctmAlertFileName = writeAlertFile(data=ctmAlertDataFinal, alert=ctmAlertId, type="infra")
 
                 # Update CTM Alert staus if file is written
                 if _ctmActiveApi and fileStatus:
+                    sAlertNotes = "Alert File: '" + ctmAlertFileName + "'"
+                    ctmAlertSev = "Normal"
+                    ctmAlertsStatus = ctm.updateCtmAlertCore(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertComment=sAlertNotes,
+                        ctmAlertUrgency=ctmAlertSev)   
+
                     ctmAlertsStatus = ctm.updateCtmAlertStatus(
                         ctmApiClient=ctmApiClient,
                         ctmAlertIDs=ctmAlertId,
-                        ctmAlertStatus="Reviewed")
-                    logger.debug('CTM Alert Update Status: "%s"',
-                                 ctmAlertsStatus)
+                        ctmAlertStatus="Reviewed")                    
+
+                    if _localDebug:
+                        logger.debug('CTM Alert Update Status: "%s"', ctmAlertsStatus)
+
             elif ctmAlertCat == "job":
-                ctmAlertDataFinal = analyzeAlert4Job(ctmApiClient=ctmApiClient,
-                                                     raw=jCtmAlertRaw,
-                                                     data=jCtmAlert)
-                fileStatus = writeAlertFile(data=ctmAlertDataFinal,
-                                            alert=ctmAlertId,
-                                            type="job")
+                ctmAlertDataFinal = analyzeAlert4Job(ctmApiClient=ctmApiClient, raw=jCtmAlertRaw, data=jCtmAlert)
+                fileStatus, ctmAlertFileName = writeAlertFile(data=ctmAlertDataFinal, alert=ctmAlertId, type="job")
 
                 if ctmOrderId == "00000" and ctmRunCounter == 0:
                     # do not create file
                     fileStatus = True
                     if _ctmActiveApi:
+                        sAlertNotes = "Alert File: '" + ctmAlertFileName + "'"
+                        ctmAlertSev = "Normal"
+                        ctmAlertsStatus = ctm.updateCtmAlertCore(
+                            ctmApiClient=ctmApiClient,
+                            ctmAlertIDs=ctmAlertId,
+                            ctmAlertComment=sAlertNotes,
+                            ctmAlertUrgency=ctmAlertSev)                        
+
                         ctmAlertsStatus = ctm.updateCtmAlertStatus(
                             ctmApiClient=ctmApiClient,
                             ctmAlertIDs=ctmAlertId,
                             ctmAlertStatus="Reviewed")
-                        logger.debug('CTM Alert Update Status: "%s"',
-                                     ctmAlertsStatus)
+
+                        if _localDebug:                            
+                            logger.debug('CTM Alert Update Status: "%s"', ctmAlertsStatus)
                 else:
                     # Update CTM Alert staus if file is written
-                    fileStatus = writeAlertFile(data=ctmAlertDataFinal,
-                                                alert=ctmAlertId,
-                                                type="job")
+                    fileStatus, ctmAlertFileName = writeAlertFile(data=ctmAlertDataFinal, alert=ctmAlertId, type="job")
 
-                if _ctmActiveApi and fileStatus:
+                if _ctmActiveApi and fileStatus:                   
+                    sAlertNotes = "Alert File: '" + ctmAlertFileName + "'"
+                    ctmAlertSev = "Normal"
+                    ctmAlertsStatus = ctm.updateCtmAlertCore(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertComment=sAlertNotes,
+                        ctmAlertUrgency=ctmAlertSev)
+
                     ctmAlertsStatus = ctm.updateCtmAlertStatus(
                         ctmApiClient=ctmApiClient,
                         ctmAlertIDs=ctmAlertId,
                         ctmAlertStatus="Reviewed")
-                    logger.debug('CTM Alert Update Status: "%s"',
-                                 ctmAlertsStatus)
+
+                    if _localDebug:
+                        logger.debug('CTM Alert Update Status: "%s"',ctmAlertsStatus)
+
             else:
 
-                ctmAlertDataFinal = analyzeAlert4Core(raw=jCtmAlertRaw,
-                                                      data=jCtmAlert)
-                fileStatus = writeAlertFile(data=ctmAlertDataFinal,
-                                            alert=ctmAlertId,
-                                            type="core")
+                ctmAlertDataFinal = analyzeAlert4Core(raw=jCtmAlertRaw, data=jCtmAlert)
+                fileStatus, ctmAlertFileName = writeAlertFile(data=ctmAlertDataFinal, alert=ctmAlertId, type="core")
 
                 # Update CTM Alert staus if file is written
                 if _ctmActiveApi and fileStatus:
+                    sAlertNotes = "Alert File: '" + ctmAlertFileName + "'"
+                    ctmAlertSev = "Normal"
+                    ctmAlertsStatus = ctm.updateCtmAlertCore(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertComment=sAlertNotes,
+                        ctmAlertUrgency=ctmAlertSev)                 
+
                     ctmAlertsStatus = ctm.updateCtmAlertStatus(
                         ctmApiClient=ctmApiClient,
                         ctmAlertIDs=ctmAlertId,
                         ctmAlertStatus="Reviewed")
-                    logger.debug('CTM Alert Update Status: "%s"',
-                                 ctmAlertsStatus)
+
+                    if _localDebug:
+                        logger.debug('CTM Alert Update Status: "%s"', ctmAlertsStatus)
 
             bhom_event_id = "BHOM-0000"
             if integration_bhom_enabled:
@@ -852,36 +905,36 @@ if __name__ == "__main__":
                     logger.debug('CTM BHOM: Event ID   : %s', bhom_event_id)
                     logger.debug('CTM BHOM: Auth Token : %s', authToken)
 
-            # update CTM Alert
-            if _ctmActiveApi:
-                sAlertNotes = "Processed Alert: #" + bhom_event_id + "#"
-                ctmAlertSev = "Normal"
-                ctmAlertsStatus = ctm.updateCtmAlertCore(
-                    ctmApiClient=ctmApiClient,
-                    ctmAlertIDs=ctmAlertId,
-                    ctmAlertComment=sAlertNotes,
-                    ctmAlertUrgency=ctmAlertSev)
+                # update CTM Alert
+                if _ctmActiveApi:
+                    sAlertNotes = "Event: #" + bhom_event_id + "#" + ctmAlertFileName + "#"
+                    ctmAlertSev = "Normal"
+                    ctmAlertsStatus = ctm.updateCtmAlertCore(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertComment=sAlertNotes,
+                        ctmAlertUrgency=ctmAlertSev)
+
+                    ctmAlertsStatus = ctm.updateCtmAlertStatus(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertStatus="Reviewed")                        
 
             # Close cTM AAPI connection
             if _ctmActiveApi:
                 ctm.delCtmConnection(ctmApiObj)
-
-            logger.info('')
-            logger.info('CMT New Alert Processing: %s', "Done")
-            logger.info('')
-
-            sSysOutMsg = "Processed New Alert: #" + str(
-                ctmAlertId) + "#" + bhom_event_id + "#"
+            if _localDebugData:
+                logger.debug('CTM New Alert Processing: %s', "Done")
+ 
+            sSysOutMsg = "Event: #" + str(ctmAlertId) + "#" + bhom_event_id + "#, Alert File: '" + ctmAlertFileName + "'"
+            logger.info(sSysOutMsg)
 
         # Process only 'update' alerts
         if "Update" in ctmAlertCallType:
             if _localDebugData:
                 logger.debug('- CTM Alert Update: "%s"', "Start")
                 logger.debug('- CTM Alert Notes : "%s"', "ctmAlertNotes")
-
-            logger.info('')
-            logger.info('CMT Update Alert Processing: "%s"', "Nothing To do")
-            logger.info('')
+                logger.debug('- CTM Update Alert Processing: "%s"', "Nothing To do")
 
             sSysOutMsg = "Processed Update Alert: " + str(ctmAlertId)
 
