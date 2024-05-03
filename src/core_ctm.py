@@ -2266,8 +2266,13 @@ def transformCtmBHOM(data, category):
         event_data['priority'] = 'PRIORITY_3'
         event_data['location'] = json_ctm_data["coreAlert"][0]["data_center"]
         event_data['instancename'] = json_ctm_data["coreAlert"][0]["host_id"]
-        event_data['cdmclass'] = json_ctm_data["coreAlert"][0][
-            "system_class"].split(':')[0]
+               
+        cdmclass =  json_ctm_data["coreAlert"][0]["system_class"].split(':')[0]
+        if cdmclass and not cdmclass.startswith("None"):
+                cdmclass = cdmclass.strip()
+                
+        event_data['cdmclass'] = cdmclass
+                
         event_data['componentalias'] = json_ctm_data["coreAlert"][0][
             "system_class"]
         event_data['system_category'] = json_ctm_data["coreAlert"][0][
