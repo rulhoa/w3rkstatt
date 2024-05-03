@@ -648,23 +648,52 @@ if __name__ == "__main__":
         sCtmAlert = ctm.trasnformtCtmAlert(data=jCtmAlert)
         jCtmAlert = json.loads(sCtmAlert)
         ctmEventType = ctm.extractCtmAlertType(jCtmAlert)
-        ctmAlertId = str(
-            w3rkstatt.getJsonValue(path="$.alert_id", data=jCtmAlert)).strip()
-        ctmAlertCallType = w3rkstatt.getJsonValue(path="$.call_type",
-                                                  data=jCtmAlert).strip()
-        ctmDataCenter = w3rkstatt.getJsonValue(path="$.data_center",
-                                               data=jCtmAlert).strip()
-        ctmOrderId = w3rkstatt.getJsonValue(path="$.order_id",
-                                            data=jCtmAlert).strip()
-        ctmRunCounter = w3rkstatt.getJsonValue(path="$.run_counter",
-                                               data=jCtmAlert).strip()
-        ctmAlertCat = w3rkstatt.getJsonValue(path="$.system_category",
-                                             data=jCtmAlert).strip()
-        ctmAlertSev = w3rkstatt.getJsonValue(path="$.severity",
-                                             data=jCtmAlert).strip()
-        sCtmJobCyclic = w3rkstatt.getJsonValue(path="$.jobInfo.[0].cyclic",
-                                               data=jCtmAlert).strip()
+        ctmAlertId = str(w3rkstatt.getJsonValue(path="$.alert_id", data=jCtmAlert))
+        ctmAlertCallType = w3rkstatt.getJsonValue(path="$.call_type",data=jCtmAlert)
+        ctmDataCenter = w3rkstatt.getJsonValue(path="$.data_center", data=jCtmAlert)
+
+        ctmOrderId = w3rkstatt.getJsonValue(path="$.order_id", data=jCtmAlert)
+        ctmRunCounter = w3rkstatt.getJsonValue(path="$.run_counter", data=jCtmAlert)
+        ctmAlertCat = w3rkstatt.getJsonValue(path="$.system_category", data=jCtmAlert)
+        ctmAlertSev = w3rkstatt.getJsonValue(path="$.severity", data=jCtmAlert)
+        sCtmJobCyclic = w3rkstatt.getJsonValue(path="$.jobInfo.[0].cyclic", data=jCtmAlert)
         ctmAlertNotes = w3rkstatt.getJsonValue(path="$.notes", data=jCtmAlert)
+
+        # clean up data
+        if ctmAlertId and not ctmAlertId.startswith("None"):
+            ctmAlertId = ctmAlertId.strip()
+
+        if ctmAlertCallType and not ctmAlertCallType.startswith("None"):
+            ctmAlertCallType = ctmAlertCallType.strip()
+
+        if ctmDataCenter and not ctmDataCenter.startswith("None"):
+            ctmDataCenter = ctmDataCenter.strip()
+
+        if ctmOrderId and not ctmOrderId.startswith("None"):
+            ctmOrderId = ctmOrderId.strip()
+
+        if ctmRunCounter and not ctmRunCounter.startswith("None"):
+            ctmRunCounter = ctmRunCounter.strip()
+
+        if ctmAlertCat and not ctmAlertCat.startswith("None"):
+            ctmAlertCat = ctmAlertCat.strip()
+
+        if ctmAlertSev and not ctmAlertSev.startswith("None"):
+            ctmAlertSev = ctmAlertSev.strip()
+
+        if sCtmJobCyclic and not sCtmJobCyclic.startswith("None"):
+            sCtmJobCyclic = sCtmJobCyclic.strip()
+
+        if _localDebugData:
+            logger.info('CTM Extract Alert Category: %s', ctmAlertCat)
+            logger.info('CTM Extract Alert ID: %s', ctmAlertId)
+            logger.info('CTM Extract Alert Type: "%s"', ctmEventType)
+            logger.info('CTM Extract Alert Category: "%s"', ctmAlertCat)
+            logger.info('CTM Extract Job Datacenter: %s', ctmDataCenter)
+            logger.info('CTM Extract Job ID: %s', ctmOrderId)
+            logger.info('CTM Extract Run Counter: %s', ctmRunCounter)
+            logger.info('CTM Extract Alert Call: "%s"', ctmAlertCallType)
+
 
         # Process only 'new' alerts
         if "New" in ctmAlertCallType:
