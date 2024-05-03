@@ -2267,7 +2267,7 @@ def transformCtmBHOM(data, category):
         event_data['location'] = json_ctm_data["coreAlert"][0]["data_center"]
         event_data['instancename'] = json_ctm_data["coreAlert"][0]["host_id"]
                
-        cdmclass =  json_ctm_data["coreAlert"][0]["system_class"]
+        cdmclass =  json_ctm_data["coreAlert"][0]["system_class"].split(':')[0]
         if cdmclass and not cdmclass.startswith("None"):
                 cdmclass = cdmclass.strip()
                 
