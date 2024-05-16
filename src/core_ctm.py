@@ -2154,8 +2154,10 @@ def transformCtmBHOM(data, category):
 
         if ctmjobConfigCount > 0:
             # The user who runs the job
-            event_data['ctmOwner'] = json_ctm_data["jobConfig"][0]["entries"][
-                0][ctmFolder]["CreatedBy"]
+            #event_data['ctmOwner'] = json_ctm_data["jobConfig"][0]["entries"][
+            #    0][ctmFolder]["CreatedBy"]
+            
+            event_data['ctmOwner'] = json_ctm_data.get("jobConfig", [{}])[0].get("entries", [{}])[0].get(ctmFolder, {}).get("CreatedBy")
 
         event_data['severity'] = json_ctm_data["jobAlert"][0]["severity"]
         event_data['CLASS'] = 'CTM_JOB'
