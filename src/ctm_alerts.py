@@ -26,6 +26,7 @@ Date (YMD)    Name                  What
 --------      ------------------    ------------------------
 20210527      Volker Scheithauer    Tranfer Development from other projects
 20220715      Volker Scheithauer    BMC Helix Operation Management Integration
+20240503      Volker Scheithauer    Fix CTM Alert conversion to json
 
 """
 
@@ -46,8 +47,6 @@ from xml.sax import make_parser
 try:
     import w3rkstatt as w3rkstatt
     import core_ctm as ctm
-    import core_itsm as itsm
-    import core_tsim as tsim
     import core_bhom as bhom
 except:
     # fix import issues for modules
@@ -55,8 +54,6 @@ except:
         os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
     from src import w3rkstatt as w3rkstatt
     from src import core_ctm as ctm
-    from src import core_itsm as itsm
-    from src import core_tsim as tsim
     from src import core_bhom as bhom
 
 # Get configuration from bmcs_core.json
@@ -73,10 +70,6 @@ data_folder = logFolder
 ctm_host = w3rkstatt.getJsonValue(path="$.CTM.host", data=jCfgData)
 ctm_port = w3rkstatt.getJsonValue(path="$.CTM.port", data=jCfgData)
 
-integration_itsm_enabled = w3rkstatt.getJsonValue(path="$.CTM.itsm.enabled",
-                                                  data=jCfgData)
-integration_tsim_enabled = w3rkstatt.getJsonValue(path="$.CTM.tsim.enabled",
-                                                  data=jCfgData)
 integration_bhom_enabled = w3rkstatt.getJsonValue(path="$.CTM.bhom.enabled",
                                                   data=jCfgData)
 
@@ -89,6 +82,7 @@ ctm_job_detail_level = w3rkstatt.getJsonValue(path="$.CTM.jobs.detail_level",
 
 ctmCoreData = None
 ctmJobData = None
+ctmAlertFileName = ""
 
 # Assign module defaults
 _localDebug = jCfgData["DEFAULT"]["debug"]["api"]
@@ -97,12 +91,11 @@ _localDebugData = jCfgData["DEFAULT"]["debug"]["data"]
 _localDebugAdvanced = jCfgData["DEFAULT"]["debug"]["advanced"]
 _localQA = jCfgData["DEFAULT"]["debug"]["qa"]
 _localDebugBHOM = jCfgData["BHOM"]["debug"]
-_localDebugITSM = jCfgData["ITSM"]["debug"]
 
 _FutureUse = False
 
 _localInfo = False
-_modVer = "3.0"
+_modVer = "3.1"
 _timeFormat = '%d %b %Y %H:%M:%S,%f'
 _ctmActiveApi = False
 
@@ -114,7 +107,6 @@ hostName = w3rkstatt.getHostName()
 hostIP = w3rkstatt.getHostIP(hostName)
 hostFqdn = w3rkstatt.getHostFqdn(hostName)
 domain = w3rkstatt.getHostDomain(hostFqdn)
-epoch = time.time()
 parser = argparse.ArgumentParser(prefix_chars=':')
 sUuid = w3rkstatt.sUuid
 
@@ -346,7 +338,6 @@ def getCtmArchiveJobRunOutput(ctmApiClient, data):
         logger.debug('CMT Job Output Raw: %s', ctmJobOutput)
     return ctmJobOutput
 
-
 def getCtmJobOutput(ctmApiClient, data):
     # Get CTM job log after 30 sec - wait for archive server to have log
     if _localDebugFunctions:
@@ -366,150 +357,6 @@ def getCtmJobOutput(ctmApiClient, data):
     sCtmJobOutput = w3rkstatt.dTranslate4Json(data=jCtmJobOutput)
 
     return sCtmJobOutput
-
-
-def createITSM(data):
-
-    jCtmAlert = json.loads(data)
-
-    # ToDO: Update Incident data
-    # Add Logic to map CTM Alerts to Incident Support Groups
-
-    sCtmAppMain = jCtmAlert["jobAlert"][0]["application"]
-    sCtmAppSub = jCtmAlert["jobAlert"][0]["sub_application"]
-    sCtmJobName = jCtmAlert["jobAlert"][0]["job_name"]
-    sCtmJobID = jCtmAlert["jobAlert"][0]["job_id"]
-    sCtmJobRunCount = jCtmAlert["jobAlert"][0]["run_counter"]
-    sCtmAlertID = jCtmAlert["jobAlert"][0]["alert_id"]
-    sCtmJobDescSum = jCtmAlert["jobAlert"][0]["message_summary"]
-    sCtmJobDescDetail = jCtmAlert["jobAlert"][0]["message_notes"]
-    try:
-        sCtmJobCyclic = jCtmAlert["jobAlert"][0]["cyclic"]
-    except:
-        sCtmJobCyclic = None
-
-    if sCtmJobCyclic:
-        sCtmVendorTicket = "#" + sCtmJobID + "#Cyclic#"
-    else:
-        sCtmVendorTicket = "#" + sCtmJobID + "#Regular#" + \
-            sCtmJobRunCount + "#" + sCtmAlertID + "#"
-
-    jIncidentData = {
-        "values": {
-            "z1D_Action":
-            "CREATE",
-            "First_Name":
-            jCfgData["ITSM"]["defaults"]["name-first"],
-            "Last_Name":
-            jCfgData["ITSM"]["defaults"]["name-last"],
-            "Description":
-            sCtmJobDescSum,
-            "Detailed_Decription":
-            sCtmJobDescDetail,
-            "Impact":
-            jCfgData["ITSM"]["incident"]["impact"],
-            "Urgency":
-            jCfgData["ITSM"]["incident"]["urgency"],
-            "Status":
-            jCfgData["ITSM"]["incident"]["status"],
-            "Reported Source":
-            jCfgData["ITSM"]["incident"]["reported-source"],
-            "Service_Type":
-            jCfgData["ITSM"]["incident"]["service-type"],
-            "ServiceCI":
-            jCfgData["ITSM"]["defaults"]["service-ci"],
-            "Categorization Tier 1":
-            jCfgData["ITSM"]["defaults"]["op_cat_1"],
-            "Categorization Tier 2":
-            jCfgData["ITSM"]["defaults"]["op_cat_2"],
-            "Categorization Tier 3":
-            jCfgData["ITSM"]["defaults"]["op_cat_3"],
-            "Product Categorization Tier 1":
-            jCfgData["ITSM"]["defaults"]["prod_cat_1"],
-            "Product Categorization Tier 2":
-            jCfgData["ITSM"]["defaults"]["prod_cat_2"],
-            "Product Categorization Tier 3":
-            jCfgData["ITSM"]["defaults"]["prod_cat_3"],
-            # "Product Name":
-            # w3rkstatt.getJsonValue(path="$.ITSM.defaults.product_name",
-            #                        data=jCfgData),
-            "Vendor Ticket Number":
-            sCtmVendorTicket
-        }
-    }
-
-    if _localDebugITSM:
-        sIncidentData = w3rkstatt.jsonTranslateValues(data=jIncidentData)
-        logger.debug('ITSM Integration Data = %s ', sIncidentData)
-        logger.debug('')
-
-    # ITSM Login
-    authToken = itsm.authenticate()
-
-    if _localDebugITSM:
-        logger.debug('ITSM Login Token = %s ', authToken)
-        logger.debug('')
-
-    incidentId = itsm.createIncident(token=authToken, data=jIncidentData)
-
-    if _localDebugITSM:
-        logger.debug('Function = "%s" ', "createITSM")
-        sIncidentData = w3rkstatt.jsonTranslateValues(data=jIncidentData)
-        logger.debug('')
-        logger.debug('ITSM Integration Data = %s ', sIncidentData)
-        logger.debug('')
-        logger.debug('ITSM Incident: "%s" ', incidentId)
-
-    # Worklog entry for CTM Alert
-    jWorklogData = w3rkstatt.getJsonValue(path="$.jobAlert", data=jCtmAlert)
-    createWorklog(token=authToken, data=jWorklogData, incident=incidentId)
-
-    if _localDebugITSM:
-        sIncidentData = w3rkstatt.jsonTranslateValues(data=jWorklogData)
-        logger.debug('')
-        logger.debug('ITSM Worklog Data = %s ', sIncidentData)
-        logger.debug('')
-
-    # Worklog entry for CTM Job Info
-    jWorklogData = w3rkstatt.getJsonValue(path="$.jobInfo", data=jCtmAlert)
-    createWorklog(token=authToken, data=jWorklogData, incident=incidentId)
-
-    # Worklog entry for CTM Job Config
-    jWorklogData = w3rkstatt.getJsonValue(path="$.jobConfig", data=jCtmAlert)
-    createWorklog(token=authToken, data=jWorklogData, incident=incidentId)
-
-    # Worklog entry for CTM Job Output
-    jWorklogData = w3rkstatt.getJsonValue(path="$.jobLog", data=jCtmAlert)
-    createWorklog(token=authToken, data=jWorklogData, incident=incidentId)
-
-    # Worklog entry for CTM Job Output
-    jWorklogData = w3rkstatt.getJsonValue(path="$.jobOutput", data=jCtmAlert)
-    createWorklog(token=authToken, data=jWorklogData, incident=incidentId)
-
-    # ITSM Logoff
-    # itsm.itsmLogout(token=authToken)
-    logger.info('ITSM Incident: %s', incidentId)
-    return incidentId
-
-
-def createWorklog(token, data, incident):
-    authToken = token
-    jCtmAlert = json.dumps(data[0], indent=4)
-    worklog = {
-        "values": {
-            "Work Log Submitter": "user",
-            "Status": "Enabled",
-            "Description": "Control-M Log",
-            "Detailed Description": "" + jCtmAlert + "",
-            "Incident Number": "" + str(incident) + "",
-            "Work Log Type": "Working Log",
-            "View Access": "Public",
-            "Secure Work Log": "No"
-        }
-    }
-    result = itsm.createIncidentWorklog(token=authToken, data=worklog)
-    return result
-
 
 def getCtmFolder(ctmApiClient, data):
     ctmData = data
@@ -712,6 +559,7 @@ def analyzeAlert4Infra(raw, data):
 
 def writeAlertFile(data, alert, type="job"):
     fileStatus = False
+    fileName = None
     ctmJobData = data
     if _ctmActiveApi:
         fileType = "ctm-enriched-" + type + "-"
@@ -732,7 +580,7 @@ def writeAlertFile(data, alert, type="job"):
             logger.info('Function = "%s" ', "writeAlertFile")
             logger.info('CTM QA Alert File: "%s" ', filePath)
 
-    return fileStatus
+    return fileStatus, fileName
 
 
 if __name__ == "__main__":
@@ -791,6 +639,30 @@ if __name__ == "__main__":
                 "notes": None
             }
 
+            jCtmAlert = {
+                "call_type": "I",
+                "alert_id": "1981",
+                "data_center": "ctm-srv.shytwr.net",
+                "memname": None,
+                "order_id": None,
+                "severity": "V",
+                "status": "Not_Noticed",
+                "send_time": "20240412112921",
+                "last_user": None,
+                "last_time": None,
+                "message": "SERVER ctm-srv.shytwr.net WAS DISCONNECTED",
+                "run_as": "Gateway",
+                "sub_application": None,
+                "application": None,
+                "job_name": None,
+                "host_id": None,
+                "alert_type": "R",
+                "closed_from_em": None,
+                "ticket_number": None,
+                "run_counter": None,
+                "notes": None
+            }
+
     if len(jCtmAlert) > 0:
 
         if _localDebugData:
@@ -802,29 +674,61 @@ if __name__ == "__main__":
         sCtmAlert = ctm.trasnformtCtmAlert(data=jCtmAlert)
         jCtmAlert = json.loads(sCtmAlert)
         ctmEventType = ctm.extractCtmAlertType(jCtmAlert)
-        ctmAlertId = str(
-            w3rkstatt.getJsonValue(path="$.alert_id", data=jCtmAlert)).strip()
-        ctmAlertCallType = w3rkstatt.getJsonValue(path="$.call_type",
-                                                  data=jCtmAlert).strip()
-        ctmDataCenter = w3rkstatt.getJsonValue(path="$.data_center",
-                                               data=jCtmAlert).strip()
-        ctmOrderId = w3rkstatt.getJsonValue(path="$.order_id",
-                                            data=jCtmAlert).strip()
-        ctmRunCounter = w3rkstatt.getJsonValue(path="$.run_counter",
-                                               data=jCtmAlert).strip()
-        ctmAlertCat = w3rkstatt.getJsonValue(path="$.system_category",
-                                             data=jCtmAlert).strip()
-        ctmAlertSev = w3rkstatt.getJsonValue(path="$.severity",
-                                             data=jCtmAlert).strip()
-        sCtmJobCyclic = w3rkstatt.getJsonValue(path="$.jobInfo.[0].cyclic",
-                                               data=jCtmAlert).strip()
+        ctmAlertId = str(w3rkstatt.getJsonValue(path="$.alert_id", data=jCtmAlert))
+        ctmAlertCallType = w3rkstatt.getJsonValue(path="$.call_type",data=jCtmAlert)
+        ctmDataCenter = w3rkstatt.getJsonValue(path="$.data_center", data=jCtmAlert)
+
+        ctmOrderId = w3rkstatt.getJsonValue(path="$.order_id", data=jCtmAlert)
+        ctmRunCounter = w3rkstatt.getJsonValue(path="$.run_counter", data=jCtmAlert)
+        ctmAlertCat = w3rkstatt.getJsonValue(path="$.system_category", data=jCtmAlert)
+        ctmAlertSev = w3rkstatt.getJsonValue(path="$.severity", data=jCtmAlert)
+        sCtmJobCyclic = w3rkstatt.getJsonValue(path="$.jobInfo.[0].cyclic", data=jCtmAlert)
         ctmAlertNotes = w3rkstatt.getJsonValue(path="$.notes", data=jCtmAlert)
+
+        # clean up data
+        if ctmAlertId and not ctmAlertId.startswith("None"):
+            ctmAlertId = ctmAlertId.strip()
+
+        if ctmAlertCallType and not ctmAlertCallType.startswith("None"):
+            ctmAlertCallType = ctmAlertCallType.strip()
+
+        if ctmDataCenter and not ctmDataCenter.startswith("None"):
+            ctmDataCenter = ctmDataCenter.strip()
+
+        if ctmOrderId and not ctmOrderId.startswith("None"):
+            ctmOrderId = ctmOrderId.strip()
+
+        if ctmRunCounter and not ctmRunCounter.startswith("None"):
+            ctmRunCounter = ctmRunCounter.strip()
+
+        if ctmAlertCat and not ctmAlertCat.startswith("None"):
+            ctmAlertCat = ctmAlertCat.strip()
+
+        if ctmAlertSev and not ctmAlertSev.startswith("None"):
+            ctmAlertSev = ctmAlertSev.strip()
+
+        if sCtmJobCyclic and not sCtmJobCyclic.startswith("None"):
+            sCtmJobCyclic = sCtmJobCyclic.strip()
+
+        if _localDebugData:
+            logger.info('CTM Extract Alert Category: %s', ctmAlertCat)
+            logger.info('CTM Extract Alert ID: %s', ctmAlertId)
+            logger.info('CTM Extract Alert Type: "%s"', ctmEventType)
+            logger.info('CTM Extract Alert Category: "%s"', ctmAlertCat)
+            logger.info('CTM Extract Job Datacenter: %s', ctmDataCenter)
+            logger.info('CTM Extract Job ID: %s', ctmOrderId)
+            logger.info('CTM Extract Run Counter: %s', ctmRunCounter)
+            logger.info('CTM Extract Alert Call: "%s"', ctmAlertCallType)
+
+            
 
         # Process only 'new' alerts
         if "New" in ctmAlertCallType:
             logger.info('')
             logger.info('CMT New Alert Processing: %s', jCtmAlertRaw)
-            logger.info('')
+            logger.info('CMT New Alert Category: "%s"', ctmAlertCat)
+
+
             if ctmAlertCat == "infrastructure":
                 pass
             else:
@@ -857,15 +761,13 @@ if __name__ == "__main__":
 
                 logger.info('')
                 jCtmAlertRawTemp = jCtmAlertRaw.replace('null', 'None')
-                logger.info('CMT QA Alert JSON Format 03: %s',
-                            jCtmAlertRawTemp)
+                logger.info('CMT QA Alert JSON Format 03: %s', jCtmAlertRawTemp)
                 logger.info('')
 
             # xAlert ID
             if not ctmAlertId:
                 ctmAlertId = str(
-                    w3rkstatt.getJsonValue(path="$.Serial",
-                                           data=jCtmAlert)).strip()
+                    w3rkstatt.getJsonValue(path="$.Serial", data=jCtmAlert)).strip()
 
             # CTM Login
             try:
@@ -880,102 +782,93 @@ if __name__ == "__main__":
             # Analyze alert
             ctmAlertDataFinal = {}
             if ctmAlertCat == "infrastructure":
-                ctmAlertDataFinal = analyzeAlert4Infra(raw=jCtmAlertRaw,
-                                                       data=jCtmAlert)
-                fileStatus = writeAlertFile(data=ctmAlertDataFinal,
-                                            alert=ctmAlertId,
-                                            type="infra")
+                ctmAlertDataFinal = analyzeAlert4Infra(raw=jCtmAlertRaw, data=jCtmAlert)
+                fileStatus, ctmAlertFileName = writeAlertFile(data=ctmAlertDataFinal, alert=ctmAlertId, type="infra")
 
                 # Update CTM Alert staus if file is written
                 if _ctmActiveApi and fileStatus:
+                    sAlertNotes = "Alert File: '" + ctmAlertFileName + "'"
+                    ctmAlertSev = "Normal"
+                    ctmAlertsStatus = ctm.updateCtmAlertCore(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertComment=sAlertNotes,
+                        ctmAlertUrgency=ctmAlertSev)   
+
                     ctmAlertsStatus = ctm.updateCtmAlertStatus(
                         ctmApiClient=ctmApiClient,
                         ctmAlertIDs=ctmAlertId,
-                        ctmAlertStatus="Reviewed")
-                    logger.debug('CTM Alert Update Status: "%s"',
-                                 ctmAlertsStatus)
+                        ctmAlertStatus="Reviewed")                    
+
+                    if _localDebug:
+                        logger.debug('CTM Alert Update Status: "%s"', ctmAlertsStatus)
+
             elif ctmAlertCat == "job":
-                ctmAlertDataFinal = analyzeAlert4Job(ctmApiClient=ctmApiClient,
-                                                     raw=jCtmAlertRaw,
-                                                     data=jCtmAlert)
-                fileStatus = writeAlertFile(data=ctmAlertDataFinal,
-                                            alert=ctmAlertId,
-                                            type="job")
+                ctmAlertDataFinal = analyzeAlert4Job(ctmApiClient=ctmApiClient, raw=jCtmAlertRaw, data=jCtmAlert)
+                fileStatus, ctmAlertFileName = writeAlertFile(data=ctmAlertDataFinal, alert=ctmAlertId, type="job")
 
                 if ctmOrderId == "00000" and ctmRunCounter == 0:
                     # do not create file
                     fileStatus = True
                     if _ctmActiveApi:
+                        sAlertNotes = "Alert File: '" + ctmAlertFileName + "'"
+                        ctmAlertSev = "Normal"
+                        ctmAlertsStatus = ctm.updateCtmAlertCore(
+                            ctmApiClient=ctmApiClient,
+                            ctmAlertIDs=ctmAlertId,
+                            ctmAlertComment=sAlertNotes,
+                            ctmAlertUrgency=ctmAlertSev)                        
+
                         ctmAlertsStatus = ctm.updateCtmAlertStatus(
                             ctmApiClient=ctmApiClient,
                             ctmAlertIDs=ctmAlertId,
                             ctmAlertStatus="Reviewed")
-                        logger.debug('CTM Alert Update Status: "%s"',
-                                     ctmAlertsStatus)
+
+                        if _localDebug:                            
+                            logger.debug('CTM Alert Update Status: "%s"', ctmAlertsStatus)
                 else:
                     # Update CTM Alert staus if file is written
-                    fileStatus = writeAlertFile(data=ctmAlertDataFinal,
-                                                alert=ctmAlertId,
-                                                type="job")
+                    fileStatus, ctmAlertFileName = writeAlertFile(data=ctmAlertDataFinal, alert=ctmAlertId, type="job")
 
-                if _ctmActiveApi and fileStatus:
+                if _ctmActiveApi and fileStatus:                   
+                    sAlertNotes = "Alert File: '" + ctmAlertFileName + "'"
+                    ctmAlertSev = "Normal"
+                    ctmAlertsStatus = ctm.updateCtmAlertCore(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertComment=sAlertNotes,
+                        ctmAlertUrgency=ctmAlertSev)
+
                     ctmAlertsStatus = ctm.updateCtmAlertStatus(
                         ctmApiClient=ctmApiClient,
                         ctmAlertIDs=ctmAlertId,
                         ctmAlertStatus="Reviewed")
-                    logger.debug('CTM Alert Update Status: "%s"',
-                                 ctmAlertsStatus)
+
+                    if _localDebug:
+                        logger.debug('CTM Alert Update Status: "%s"',ctmAlertsStatus)
+
             else:
 
-                ctmAlertDataFinal = analyzeAlert4Core(raw=jCtmAlertRaw,
-                                                      data=jCtmAlert)
-                fileStatus = writeAlertFile(data=ctmAlertDataFinal,
-                                            alert=ctmAlertId,
-                                            type="core")
+                ctmAlertDataFinal = analyzeAlert4Core(raw=jCtmAlertRaw, data=jCtmAlert)
+                fileStatus, ctmAlertFileName = writeAlertFile(data=ctmAlertDataFinal, alert=ctmAlertId, type="core")
 
                 # Update CTM Alert staus if file is written
                 if _ctmActiveApi and fileStatus:
+                    sAlertNotes = "Alert File: '" + ctmAlertFileName + "'"
+                    ctmAlertSev = "Normal"
+                    ctmAlertsStatus = ctm.updateCtmAlertCore(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertComment=sAlertNotes,
+                        ctmAlertUrgency=ctmAlertSev)                 
+
                     ctmAlertsStatus = ctm.updateCtmAlertStatus(
                         ctmApiClient=ctmApiClient,
                         ctmAlertIDs=ctmAlertId,
                         ctmAlertStatus="Reviewed")
-                    logger.debug('CTM Alert Update Status: "%s"',
-                                 ctmAlertsStatus)
 
-            incident = "INC-0000"
-            if integration_itsm_enabled:
-                logger.debug('CTM ITSM Integration: "%s"', "Start")
-                logger.debug('CTM ITSM Debug: "%s"', _localDebugITSM)
-                # Create Incident only once
-                # Catch Cyclic Jobs
-                if ctmRunCounter == 1 and sCtmJobCyclic:
-                    if _localDebugITSM:
-                        logger.debug(
-                            'CTM ITSM Integration Cyclic Job Run: "%s"',
-                            ctmRunCounter)
-                    incident = createITSM(data=ctmAlertDataFinal)
-                elif ctmRunCounter >= 1 and sCtmJobCyclic:
-                    if _localDebugITSM:
-                        logger.debug(
-                            'CTM ITSM Integration Cyclic Job Run: "%s"',
-                            ctmRunCounter)
-                    # Update Incident Worklog only
-                    incident = "WRK-0000"
-                elif ctmRunCounter >= 1 and not sCtmJobCyclic:
-                    if _localDebugITSM:
-                        logger.debug(
-                            'CTM ITSM Integration Normal Job Run: "%s"',
-                            ctmRunCounter)
-                        logger.debug('CTM Alert Data forITSM : "%s"',
-                                     ctmAlertDataFinal)
-                    incident = createITSM(data=ctmAlertDataFinal)
-                elif ctmRunCounter == 0 and not sCtmJobCyclic:
-                    incident = "INC-9999"
-
-                else:
-                    incident = "INC-0000"
-
-                logger.debug('CTM ITSM Integration: "%s"', "End")
+                    if _localDebug:
+                        logger.debug('CTM Alert Update Status: "%s"', ctmAlertsStatus)
 
             bhom_event_id = "BHOM-0000"
             if integration_bhom_enabled:
@@ -1012,40 +905,36 @@ if __name__ == "__main__":
                     logger.debug('CTM BHOM: Event ID   : %s', bhom_event_id)
                     logger.debug('CTM BHOM: Auth Token : %s', authToken)
 
-            # update CTM Alert
-            if _ctmActiveApi:
-                sAlertNotes = "Processed Alert: #" + incident + "#" + bhom_event_id + "#"
-                ctmAlertSev = "Normal"
-                ctmAlertsStatus = ctm.updateCtmAlertCore(
-                    ctmApiClient=ctmApiClient,
-                    ctmAlertIDs=ctmAlertId,
-                    ctmAlertComment=sAlertNotes,
-                    ctmAlertUrgency=ctmAlertSev)
-                if _localDebugITSM or _localDebugBHOM or _localDebugData:
-                    logger.debug('- CTM Alert Update %s: "%s"', ctmAlertId,
-                                 sAlertNotes)
-                    logger.debug('- CTM Alert Status: %s', ctmAlertsStatus)
+                # update CTM Alert
+                if _ctmActiveApi:
+                    sAlertNotes = "Event: #" + bhom_event_id + "#" + ctmAlertFileName + "#"
+                    ctmAlertSev = "Normal"
+                    ctmAlertsStatus = ctm.updateCtmAlertCore(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertComment=sAlertNotes,
+                        ctmAlertUrgency=ctmAlertSev)
+
+                    ctmAlertsStatus = ctm.updateCtmAlertStatus(
+                        ctmApiClient=ctmApiClient,
+                        ctmAlertIDs=ctmAlertId,
+                        ctmAlertStatus="Reviewed")                        
 
             # Close cTM AAPI connection
             if _ctmActiveApi:
                 ctm.delCtmConnection(ctmApiObj)
-
-            logger.info('')
-            logger.info('CMT New Alert Processing: %s', "Done")
-            logger.info('')
-
-            sSysOutMsg = "Processed New Alert: #" + str(
-                ctmAlertId) + "#" + incident + "#" + bhom_event_id + "#"
+            if _localDebugData:
+                logger.debug('CTM New Alert Processing: %s', "Done")
+ 
+            sSysOutMsg = "Event: #" + str(ctmAlertId) + "#" + bhom_event_id + "#, Alert File: '" + ctmAlertFileName + "'"
+            logger.info(sSysOutMsg)
 
         # Process only 'update' alerts
         if "Update" in ctmAlertCallType:
             if _localDebugData:
                 logger.debug('- CTM Alert Update: "%s"', "Start")
                 logger.debug('- CTM Alert Notes : "%s"', "ctmAlertNotes")
-
-            logger.info('')
-            logger.info('CMT Update Alert Processing: "%s"', "Nothing To do")
-            logger.info('')
+                logger.debug('- CTM Update Alert Processing: "%s"', "Nothing To do")
 
             sSysOutMsg = "Processed Update Alert: " + str(ctmAlertId)
 
